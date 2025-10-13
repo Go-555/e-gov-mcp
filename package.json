@@ -1,5 +1,5 @@
 {
-  "name": "e-gov-mcp",
+  "name": "@gonuts555/e-gov-mcp",
   "version": "1.0.0",
   "description": "MCP server for accessing Japanese e-Gov law database API",
   "type": "module",
@@ -24,6 +24,14 @@
   ],
   "author": "",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Go-555/e-gov-mcp.git"
+  },
+  "homepage": "https://github.com/Go-555/e-gov-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/Go-555/e-gov-mcp/issues"
+  },
   "engines": {
     "node": ">=18"
   },

@@ -23,7 +23,7 @@ npm run build
 Use this one-liner:
 
 ```bash
-claude mcp add "E-Gov MCP" -s user -- npx e-gov-mcp
+claude mcp add "E-Gov MCP" -s user -- npx @gonuts555/e-gov-mcp
 ```
 
 To remove:
@@ -41,7 +41,7 @@ Create `.cursor/mcp.json` in your client (do not commit it here):
   "mcpServers": {
     "e-gov-mcp": {
       "command": "npx",
-      "args": ["e-gov-mcp"],
+      "args": ["@gonuts555/e-gov-mcp"],
       "autoStart": true
     }
   }
@@ -56,7 +56,7 @@ Create `.cursor/mcp.json` in your client (do not commit it here):
 Install via URI or CLI:
 
 ```bash
-code --add-mcp '{"name":"e-gov-mcp","command":"npx","args":["e-gov-mcp"]}'
+code --add-mcp '{"name":"e-gov-mcp","command":"npx","args":["@gonuts555/e-gov-mcp"]}'
 ```
 
 </details>
@@ -79,7 +79,7 @@ Follow the MCP install guide and reuse the standard config above.
 <summary>LM Studio</summary>
 
 - Command: `npx`
-- Args: `["e-gov-mcp"]`
+- Args: `["@gonuts555/e-gov-mcp"]`
 - Enabled: true
 
 </details>
@@ -89,7 +89,7 @@ Follow the MCP install guide and reuse the standard config above.
 
 - Type: STDIO
 - Command: `npx`
-- Args: `e-gov-mcp`
+- Args: `@gonuts555/e-gov-mcp`
 - Enabled: true
 
 </details>
@@ -105,7 +105,7 @@ Example `~/.config/opencode/opencode.json`:
   "mcp": {
     "e-gov-mcp": {
       "type": "local",
-      "command": ["npx", "e-gov-mcp"],
+      "command": ["npx", "@gonuts555/e-gov-mcp"],
       "enabled": true
     }
   }
@@ -143,7 +143,7 @@ This server (minimal):
 ```toml
 [mcp_servers.e-gov-mcp]
 command = "npx"
-args = ["e-gov-mcp"]
+args = ["@gonuts555/e-gov-mcp"]
 # Optional:
 # MCP_NAME = "e-gov-mcp"
 ```
@@ -211,7 +211,7 @@ Get detailed law content:
 
 - **Network errors**: Ensure you have internet access to reach the e-Gov API at `https://laws.e-gov.go.jp/`
 - **Ensure Node 18+**: Check your Node.js version with `node -v`
-- **Local runs**: Run `npx e-gov-mcp` after `npm run build` to test the server
+- **Local runs**: Run `npx @gonuts555/e-gov-mcp` after publishing, or `node build/index.js` for local testing
 - **Inspect publish artifacts**: Use `npm pack --dry-run` to verify package contents
 
 ## References
