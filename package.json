@@ -5,7 +5,7 @@
   "type": "module",
   "main": "./build/index.js",
   "bin": {
-    "e-gov-mcp": "./build/index.js"
+    "e-gov-mcp": "build/index.js"
   },
   "files": [
     "build"
@@ -44,4 +44,3 @@
     "typescript": "^5.7.2"
   }
 }
-
