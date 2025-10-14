@@ -1,77 +1,75 @@
-# E-Gov MCP
+# e-Gov MCP
 
-The Universal MCP Server exposes tools for accessing the Japanese e-Gov law database API, enabling you to search and retrieve legal documents and provisions. Designed for prompt-first usage in MCP-compatible clients.
+e-Gov法令API（v2）を使用して、日本の法令情報を取得するためのMCPサーバーです。法人税法、消費税法、所得税法などの条文を簡単に検索・取得できます。
 
-## Installation
+## 主な機能
 
-### Prerequisites
-- Node.js 18+
-- No API key required (e-Gov API is publicly accessible)
+- 🔍 **法令検索** - 法令名での部分一致検索（「法人税法」「消費税法」など）
+- 📄 **条文取得** - 特定の条・項を指定して取得可能
+- 🔄 **JSON形式** - e-Gov API v2を使用し、クリーンなJSON形式でデータを返却
+- 🚀 **簡単セットアップ** - npxで即座に利用可能
 
-### Get an API key
-No API key is required. The e-Gov API is publicly accessible for retrieving Japanese legal information.
+## インストール
 
-### Build locally
+### 前提条件
+- Node.js 18以上
+- APIキーは不要（e-Gov APIは公開されています）
+
+### ローカルでビルド
+
 ```bash
 cd /path/to/e-gov-mcp
-npm i
+npm install
 npm run build
 ```
 
-## Setup: Claude Code (CLI)
+## セットアップ方法
 
-Use this one-liner:
-
-```bash
-claude mcp add "E-Gov MCP" -s user -- npx @gonuts555/e-gov-mcp
-```
-
-To remove:
+### Claude Code (CLI)
 
 ```bash
-claude mcp remove "E-Gov MCP"
+claude mcp add "e-Gov MCP" -s user -- npx @gonuts555/e-gov-mcp@latest
 ```
 
-## Setup: Cursor
+削除する場合：
 
-Create `.cursor/mcp.json` in your client (do not commit it here):
+```bash
+claude mcp remove "e-Gov MCP"
+```
+
+### Cursor
+
+`.cursor/mcp.json` に以下を追加：
 
 ```json
 {
   "mcpServers": {
     "e-gov-mcp": {
       "command": "npx",
-      "args": ["@gonuts555/e-gov-mcp"],
+      "args": ["-y", "@gonuts555/e-gov-mcp@latest"],
       "autoStart": true
     }
   }
 }
 ```
 
-## Other Clients and Agents
+**注意:** このリポジトリには `.cursor/mcp.json` は含まれていません。上記の設定を手動で追加してください。
+
+### その他のクライアント
 
 <details>
 <summary>VS Code</summary>
 
-Install via URI or CLI:
-
 ```bash
-code --add-mcp '{"name":"e-gov-mcp","command":"npx","args":["@gonuts555/e-gov-mcp"]}'
+code --add-mcp '{"name":"e-gov-mcp","command":"npx","args":["-y","@gonuts555/e-gov-mcp@latest"]}'
 ```
-
-</details>
-
-<details>
-<summary>VS Code Insiders</summary>
-
-Same as VS Code, use `code-insiders` command instead.
 
 </details>
 
 <details>
 <summary>Claude Desktop</summary>
 
-Follow the MCP install guide and reuse the standard config above.
+MCPインストールガイドに従って、上記の標準設定を使用してください。
 
 </details>
 
@@ -79,7 +77,7 @@ Follow the MCP install guide and reuse the standard config above.
 <summary>LM Studio</summary>
 
 - Command: `npx`
-- Args: `["@gonuts555/e-gov-mcp"]`
+- Args: `["-y", "@gonuts555/e-gov-mcp@latest"]`
 - Enabled: true
 
 </details>
@@ -89,7 +87,7 @@ Follow the MCP install guide and reuse the standard config above.
 
 - Type: STDIO
 - Command: `npx`
-- Args: `@gonuts555/e-gov-mcp`
+- Args: `@gonuts555/e-gov-mcp@latest`
 - Enabled: true
 
 </details>
@@ -97,7 +95,7 @@ Follow the MCP install guide and reuse the standard config above.
 <details>
 <summary>opencode</summary>
 
-Example `~/.config/opencode/opencode.json`:
+`~/.config/opencode/opencode.json`:
 
 ```json
 {
@@ -105,7 +103,7 @@ Example `~/.config/opencode/opencode.json`:
   "mcp": {
     "e-gov-mcp": {
       "type": "local",
-      "command": ["npx", "@gonuts555/e-gov-mcp"],
+      "command": ["npx", "-y", "@gonuts555/e-gov-mcp@latest"],
       "enabled": true
     }
   }
@@ -117,132 +115,217 @@ Example `~/.config/opencode/opencode.json`:
 <details>
 <summary>Qodo Gen</summary>
 
-Add a new MCP and paste the standard JSON config.
+新しいMCPを追加し、上記の標準JSON設定を使用してください。
 
 </details>
 
 <details>
 <summary>Windsurf</summary>
 
-See docs and reuse the standard config above.
+ドキュメントを参照し、上記の標準設定を使用してください。
 
 </details>
 
-## Setup: Codex (TOML)
-
-Example (Serena reference):
-
-```toml
-[mcp_servers.serena]
-command = "uvx"
-args = ["--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server", "--context", "codex"]
-```
-
-This server (minimal):
-
-```toml
-[mcp_servers.e-gov-mcp]
-command = "npx"
-args = ["@gonuts555/e-gov-mcp"]
-# Optional:
-# MCP_NAME = "e-gov-mcp"
-```
-
-## Configuration (Env)
-
-- `MCP_NAME`: Server name override (default: `e-gov-mcp`)
-
-If your tools are purely local or use public APIs, no API keys are required. The e-Gov API is publicly accessible.
-
-## Available Tools
+## 利用可能なツール
 
 ### search_laws
-Search for Japanese laws in the e-Gov database.
 
-- **inputs**:
-  - `keyword` (string, optional): Keyword to search in law names (e.g., '消費税', '法人税', '所得税')
-  - `lawNum` (string, optional): Law number to search for (e.g., '363AC0000000108' for 消費税法)
-  - `lawType` (string, optional): Type of law: '1' for Constitution, '2' for Laws, '3' for Cabinet Orders, '4' for Imperial Ordinances, '5' for Ministerial Ordinances
-  - `limit` (number, optional): Maximum number of results to return (default: 10, max: 50)
+e-Gov法令データベースから法令を検索します。
 
-- **outputs**: JSON object containing:
-  - `count`: Number of laws found
-  - `laws`: Array of law objects with lawId, lawNo, lawName, and promulgationDate
+**入力パラメータ:**
+- `keyword` (string, オプション): 法令名または略称（部分一致）
+  - 例: `"法人税法"`, `"消費税"`, `"所得税"`
+- `lawNum` (string, オプション): 法令番号
+  - 例: `"昭和四十年法律第三十四号"`
+- `lawType` (string, オプション): 法令種別
+  - `"Constitution"` - 憲法
+  - `"Act"` - 法律
+  - `"CabinetOrder"` - 政令
+  - `"ImperialOrder"` - 勅令
+  - `"MinisterialOrdinance"` - 省令
+- `limit` (number, オプション): 最大取得件数（デフォルト: 10, 最大: 100）
+
+**出力:**
+```json
+{
+  "total_count": 10,
+  "count": 3,
+  "laws": [
+    {
+      "law_info": {
+        "law_id": "340AC0000000034",
+        "law_num": "昭和四十年法律第三十四号",
+        ...
+      },
+      "revision_info": {
+        "law_title": "法人税法",
+        "law_title_kana": "ほうじんぜいほう",
+        "category": "国税",
+        ...
+      }
+    }
+  ]
+}
+```
 
 ### get_law_data
-Get the full text and articles of a specific Japanese law by its Law ID.
 
-- **inputs**:
-  - `lawId` (string, **required**): The Law ID obtained from search_laws (e.g., '363AC0000000108')
+Law IDを使用して法令の詳細を取得します。
 
-- **outputs**: JSON object containing:
-  - `lawNum`: Law number
-  - `lawTitle`: Law title
-  - `articleCount`: Total number of articles
-  - `articles`: Array of article objects (limited to first 20) with articleNum, caption, title, and paragraphs
-  - `note`: Message if results were truncated
+**入力パラメータ:**
+- `lawId` (string, **必須**): search_lawsで取得したLaw ID
+  - 例: `"340AC0000000034"` (法人税法)
+  - 例: `"363AC0000000108"` (消費税法)
+- `articleNum` (string, オプション): 取得する条の番号
+  - 例: `"22"` (第22条)
+  - 指定しない場合、最初の20条の概要を返します
+- `paragraphNum` (string, オプション): 取得する項の番号（articleNumと併用）
+  - 例: `"4"` (第4項)
 
-## Example invocation (MCP tool call)
+**出力:**
 
-Search for consumption tax law:
+特定の条・項を指定した場合:
+```json
+{
+  "lawInfo": {...},
+  "revisionInfo": {...},
+  "article": {
+    "tag": "Article",
+    "attr": { "Num": "22" },
+    "children": [
+      {
+        "tag": "ArticleTitle",
+        "children": ["第二十二条"]
+      },
+      {
+        "tag": "Paragraph",
+        "attr": { "Num": "4" },
+        "children": [...]
+      }
+    ]
+  },
+  "note": "Showing Article 22, Paragraph 4"
+}
+```
+
+## 使用例
+
+### 例1: 法人税法を検索
 
 ```json
 {
   "name": "search_laws",
   "arguments": {
-    "keyword": "消費税",
-    "limit": 5
+    "keyword": "法人税法",
+    "limit": 3
   }
 }
 ```
 
-Get detailed law content:
+### 例2: 法人税法第22条第4項を取得
 
 ```json
 {
   "name": "get_law_data",
   "arguments": {
-    "lawId": "363AC0000000108"
+    "lawId": "340AC0000000034",
+    "articleNum": "22",
+    "paragraphNum": "4"
   }
 }
 ```
 
-## Troubleshooting
+**取得される内容:**
+> 第二項に規定する当該事業年度の収益の額及び前項各号に掲げる額は、別段の定めがあるものを除き、一般に公正妥当と認められる会計処理の基準に従つて計算されるものとする。
 
-- **Network errors**: Ensure you have internet access to reach the e-Gov API at `https://laws.e-gov.go.jp/`
-- **Ensure Node 18+**: Check your Node.js version with `node -v`
-- **Local runs**: Run `npx @gonuts555/e-gov-mcp` after publishing, or `node build/index.js` for local testing
-- **Inspect publish artifacts**: Use `npm pack --dry-run` to verify package contents
+### 例3: 消費税法の納税義務（第5条）を取得
 
-## References
+```json
+{
+  "name": "get_law_data",
+  "arguments": {
+    "lawId": "363AC0000000108",
+    "articleNum": "5"
+  }
+}
+```
 
-- [MCP SDK Documentation](https://modelcontextprotocol.io/docs/sdks)
-- [MCP Architecture](https://modelcontextprotocol.io/docs/learn/architecture)
-- [MCP Server Concepts](https://modelcontextprotocol.io/docs/learn/server-concepts)
-- [MCP Server Specification](https://modelcontextprotocol.io/specification/2025-06-18/server/index)
-- [e-Gov Law API Documentation](https://laws.e-gov.go.jp/api/2/swagger-ui)
-- [e-Gov API Redoc](https://laws.e-gov.go.jp/api/2/redoc/)
+### 例4: 所得税法を検索
 
-## Name Consistency & Troubleshooting
+```json
+{
+  "name": "search_laws",
+  "arguments": {
+    "keyword": "所得税",
+    "limit": 5
+  }
+}
+```
 
-- Always use CANONICAL_ID (`e-gov-mcp`) for identifiers and keys.
-- Use CANONICAL_DISPLAY (`E-Gov MCP`) only for UI labels.
-- Do not mix different names across clients.
+## よくある質問
 
-### Consistency Matrix:
-- npm package name → `e-gov-mcp`
-- Binary name → `e-gov-mcp`
-- MCP server name (SDK metadata) → `e-gov-mcp`
-- Env default MCP_NAME → `e-gov-mcp`
-- Client registry key → `e-gov-mcp`
-- UI label → `E-Gov MCP`
+### 主要な法令のLaw ID
 
-### Conflict Cleanup:
-- Remove any old entries like "EGov" or "e-gov" and re-add with "e-gov-mcp".
-- Ensure global `.mcp.json` or client registries only use "e-gov-mcp" for keys.
-- Cursor: configure in the UI only. This project does not include `.cursor/mcp.json`.
+参考までに、よく使われる法令のLaw IDを記載します：
 
-### Example:
-- **Correct**: `"mcpServers": { "e-gov-mcp": { "command": "npx", "args": ["e-gov-mcp"] } }`
-- **Incorrect**: `"EGov"` as key (will conflict with "e-gov-mcp").
+| 法令名 | Law ID |
+|--------|---------|
+| 法人税法 | `340AC0000000034` |
+| 消費税法 | `363AC0000000108` |
+| 所得税法 | `322AC0000000033` |
+| 相続税法 | `325AC0000000073` |
+| 国税通則法 | `337AC0000000066` |
 
+### 検索できない場合
+
+1. **キーワードを短くする**: 「法人税法施行令」ではなく「法人税」で検索
+2. **部分一致を活用**: 「消費税」で検索すると「消費税法」「消費税法施行令」などがヒット
+3. **limitを増やす**: デフォルトは10件、必要に応じて増やしてください
+
+### 条文が見つからない場合
+
+- 条番号は文字列で指定: `"22"` (数値の`22`ではない)
+- 存在しない条を指定するとエラーメッセージが返ります
+
+## トラブルシューティング
+
+- **ネットワークエラー**: e-Gov APIへのアクセスにインターネット接続が必要です
+- **Node 18以上が必要**: `node -v` でバージョンを確認
+- **ローカルテスト**: `npx @gonuts555/e-gov-mcp@latest` でサーバーが起動するか確認
+- **パッケージ内容の確認**: `npm pack --dry-run` で公開ファイルを確認
+
+## 参考リンク
+
+- [MCP SDK ドキュメント](https://modelcontextprotocol.io/docs/sdks)
+- [MCP アーキテクチャ](https://modelcontextprotocol.io/docs/learn/architecture)
+- [MCP サーバー概念](https://modelcontextprotocol.io/docs/learn/server-concepts)
+- [MCP サーバー仕様](https://modelcontextprotocol.io/specification/2025-06-18/server/index)
+- [e-Gov 法令API Swagger UI](https://laws.e-gov.go.jp/api/2/swagger-ui)
+- [e-Gov 法令API Redoc](https://laws.e-gov.go.jp/api/2/redoc/)
+
+## 技術仕様
+
+### 使用API
+- **e-Gov 法令API v2** を使用
+- レスポンス形式: JSON
+- 認証: 不要（公開API）
+
+### データ形式
+- すべてのレスポンスはJSON形式
+- XMLパースは不要
+- 構造化されたデータで扱いやすい
+
+## ライセンス
+
+MIT
+
+## 開発・貢献
+
+バグ報告や機能要望は [GitHub Issues](https://github.com/Go-555/e-gov-mcp/issues) へお願いします。
+
+---
+
+**パッケージ:** `@gonuts555/e-gov-mcp`  
+**バージョン:** 1.0.3  
+**npm:** https://www.npmjs.com/package/@gonuts555/e-gov-mcp  
+**GitHub:** https://github.com/Go-555/e-gov-mcp
