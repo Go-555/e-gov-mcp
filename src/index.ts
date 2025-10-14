@@ -12,7 +12,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const MCP_NAME = process.env.MCP_NAME ?? "e-gov-mcp";
-const E_GOV_API_BASE = "https://laws.e-gov.go.jp/api/1";
+const E_GOV_API_BASE = "https://laws.e-gov.go.jp/api/2";
 
 // e-Gov API helper functions
 async function searchLaws(params: {
@@ -23,17 +23,21 @@ async function searchLaws(params: {
 }): Promise<any> {
   const searchParams = new URLSearchParams();
   
+  // law_title parameter accepts partial match (部分一致)
   if (params.keyword) {
-    searchParams.append("keyword", params.keyword);
+    searchParams.append("law_title", params.keyword);
   }
   if (params.lawNum) {
-    searchParams.append("lawNum", params.lawNum);
+    searchParams.append("law_num", params.lawNum);
   }
   if (params.lawType) {
-    searchParams.append("lawType", params.lawType);
+    searchParams.append("law_type", params.lawType);
+  }
+  if (params.limit) {
+    searchParams.append("limit", params.limit.toString());
   }
   
-  const url = `${E_GOV_API_BASE}/lawlists/1?${searchParams.toString()}`;
+  const url = `${E_GOV_API_BASE}/laws?${searchParams.toString()}`;
   
   console.error(`[${MCP_NAME}] Searching laws: ${url}`);
   
@@ -42,12 +46,12 @@ async function searchLaws(params: {
     throw new Error(`e-Gov API error: ${response.status} ${response.statusText}`);
   }
   
-  const xmlText = await response.text();
-  return parseSearchResults(xmlText, params.limit);
+  const jsonData = await response.json() as any;
+  return jsonData;
 }
 
-async function getLawData(lawId: string): Promise<any> {
-  const url = `${E_GOV_API_BASE}/lawdata/${lawId}`;
+async function getLawData(lawId: string, articleNum?: string, paragraphNum?: string): Promise<any> {
+  const url = `${E_GOV_API_BASE}/law_data/${lawId}`;
   
   console.error(`[${MCP_NAME}] Fetching law data: ${url}`);
   
@@ -56,95 +60,114 @@ async function getLawData(lawId: string): Promise<any> {
     throw new Error(`e-Gov API error: ${response.status} ${response.statusText}`);
   }
   
-  const xmlText = await response.text();
-  return parseLawData(xmlText);
-}
-
-// Simple XML parser for search results
-function parseSearchResults(xmlText: string, limit: number = 10): any {
-  const laws: any[] = [];
+  const jsonData = await response.json() as any;
   
-  // Extract LawNameListInfo elements
-  const lawRegex = /<LawNameListInfo>(.*?)<\/LawNameListInfo>/gs;
-  const matches = xmlText.matchAll(lawRegex);
-  
-  let count = 0;
-  for (const match of matches) {
-    if (count >= limit) break;
-    
-    const lawInfo = match[1];
-    const lawId = lawInfo.match(/<LawId>(.*?)<\/LawId>/)?.[1] || "";
-    const lawNo = lawInfo.match(/<LawNo>(.*?)<\/LawNo>/)?.[1] || "";
-    const lawName = lawInfo.match(/<LawName>(.*?)<\/LawName>/)?.[1] || "";
-    const promulgationDate = lawInfo.match(/<PromulgationDate>(.*?)<\/PromulgationDate>/)?.[1] || "";
-    
-    laws.push({
-      lawId,
-      lawNo,
-      lawName,
-      promulgationDate,
-    });
-    
-    count++;
+  // If specific article is requested, extract it
+  if (articleNum) {
+    return extractArticle(jsonData, articleNum, paragraphNum);
   }
   
+  // Otherwise return basic info + article summary
   return {
-    count: laws.length,
-    laws,
+    lawInfo: jsonData.law_info,
+    revisionInfo: jsonData.revision_info,
+    articlesSummary: extractArticlesSummary(jsonData.law_full_text),
+    note: "This is a summary. Use articleNum parameter to get specific articles."
   };
 }
 
-// Simple XML parser for law data
-function parseLawData(xmlText: string): any {
-  const lawNum = xmlText.match(/<LawNum>(.*?)<\/LawNum>/)?.[1] || "";
-  const lawTitle = xmlText.match(/<LawTitle>(.*?)<\/LawTitle>/)?.[1] || "";
-  const lawBody = xmlText.match(/<LawBody>(.*?)<\/LawBody>/s)?.[1] || "";
+// Extract specific article from law data
+function extractArticle(lawData: any, articleNum: string, paragraphNum?: string): any {
+  const lawFullText = lawData.law_full_text;
   
-  // Extract articles
-  const articles: any[] = [];
-  const articleRegex = /<Article[^>]*Num="([^"]*)"[^>]*>(.*?)<\/Article>/gs;
-  const articleMatches = lawBody.matchAll(articleRegex);
+  // Find the article in the law structure
+  const article = findArticleRecursive(lawFullText, articleNum);
   
-  for (const match of articleMatches) {
-    const articleNum = match[1];
-    const articleContent = match[2];
-    
-    // Extract article caption
-    const caption = articleContent.match(/<ArticleCaption>(.*?)<\/ArticleCaption>/)?.[1] || "";
-    
-    // Extract article title
-    const title = articleContent.match(/<ArticleTitle>(.*?)<\/ArticleTitle>/)?.[1] || "";
-    
-    // Extract paragraphs
-    const paragraphs: string[] = [];
-    const paraRegex = /<Paragraph[^>]*>(.*?)<\/Paragraph>/gs;
-    const paraMatches = articleContent.matchAll(paraRegex);
-    
-    for (const paraMatch of paraMatches) {
-      const paraContent = paraMatch[1];
-      const sentence = paraContent.match(/<Sentence>(.*?)<\/Sentence>/s)?.[1] || "";
-      // Remove XML tags from sentence
-      const cleanSentence = sentence.replace(/<[^>]+>/g, '').trim();
-      if (cleanSentence) {
-        paragraphs.push(cleanSentence);
-      }
+  if (!article) {
+    return {
+      lawInfo: lawData.law_info,
+      revisionInfo: lawData.revision_info,
+      error: `Article ${articleNum} not found`,
+    };
+  }
+  
+  // If paragraph number is specified, filter paragraphs
+  let filteredArticle = article;
+  if (paragraphNum) {
+    filteredArticle = {
+      ...article,
+      children: article.children?.filter((child: any) => {
+        return child.tag === "Paragraph" && child.attr?.Num === paragraphNum ||
+               child.tag === "ArticleTitle" || child.tag === "ArticleCaption";
+      }) || []
+    };
+  }
+  
+  return {
+    lawInfo: lawData.law_info,
+    revisionInfo: lawData.revision_info,
+    article: filteredArticle,
+    note: paragraphNum 
+      ? `Showing Article ${articleNum}, Paragraph ${paragraphNum}` 
+      : `Showing Article ${articleNum}`
+  };
+}
+
+// Recursively search for an article in the law structure
+function findArticleRecursive(node: any, articleNum: string): any {
+  if (!node) return null;
+  
+  // Check if this node is the article we're looking for
+  if (node.tag === "Article" && node.attr?.Num === articleNum) {
+    return node;
+  }
+  
+  // Recursively search children
+  if (node.children && Array.isArray(node.children)) {
+    for (const child of node.children) {
+      const found = findArticleRecursive(child, articleNum);
+      if (found) return found;
     }
-    
-    articles.push({
-      articleNum,
-      caption,
-      title,
-      paragraphs,
-    });
   }
   
-  return {
-    lawNum,
-    lawTitle,
-    articleCount: articles.length,
-    articles: articles.slice(0, 20), // Limit to first 20 articles to avoid overwhelming response
-    note: articles.length > 20 ? `Showing first 20 of ${articles.length} articles` : undefined,
-  };
+  return null;
+}
+
+// Extract summary of articles (first 20)
+function extractArticlesSummary(lawFullText: any): any[] {
+  const articles: any[] = [];
+  collectArticles(lawFullText, articles);
+  
+  return articles.slice(0, 20).map(article => ({
+    articleNum: article.attr?.Num,
+    title: extractTextFromNode(article.children?.find((c: any) => c.tag === "ArticleTitle")),
+    caption: extractTextFromNode(article.children?.find((c: any) => c.tag === "ArticleCaption")),
+  }));
+}
+
+// Recursively collect all articles
+function collectArticles(node: any, articles: any[]): void {
+  if (!node) return;
+  
+  if (node.tag === "Article") {
+    articles.push(node);
+  }
+  
+  if (node.children && Array.isArray(node.children)) {
+    for (const child of node.children) {
+      collectArticles(child, articles);
+    }
+  }
+}
+
+// Extract text content from a node
+function extractTextFromNode(node: any): string {
+  if (!node) return "";
+  if (typeof node === "string") return node;
+  if (Array.isArray(node.children)) {
+    return node.children.map((c: any) => extractTextFromNode(c)).join("");
+  }
+  return "";
 }
 
 // Define tools
@@ -161,15 +184,15 @@ const TOOLS: Tool[] = [
         },
         lawNum: {
           type: "string",
-          description: "Law number to search for (e.g., '363AC0000000108' for 消費税法)",
+          description: "Law number to search for (e.g., '昭和二十二年法律第三十四号')",
         },
         lawType: {
           type: "string",
-          description: "Type of law: '1' for Constitution, '2' for Laws, '3' for Cabinet Orders, '4' for Imperial Ordinances, '5' for Ministerial Ordinances",
+          description: "Type of law: 'Constitution' for Constitution, 'Act' for Laws, 'CabinetOrder' for Cabinet Orders, 'ImperialOrder' for Imperial Ordinances, 'MinisterialOrdinance' for Ministerial Ordinances",
         },
         limit: {
           type: "number",
-          description: "Maximum number of results to return (default: 10, max: 50)",
+          description: "Maximum number of results to return (default: 10, max: 100)",
           default: 10,
         },
       },
@@ -177,13 +200,21 @@ const TOOLS: Tool[] = [
   },
   {
     name: "get_law_data",
-    description: "Get the full text and articles of a specific Japanese law by its Law ID. Use this after searching to retrieve detailed content including all articles and provisions. The Law ID can be obtained from search_laws results.",
+    description: "Get Japanese law content by Law ID. Can retrieve the entire law (summary of first 20 articles) or a specific article/paragraph. Use articleNum to get a specific article (e.g., '22' for Article 22). Use paragraphNum with articleNum to get a specific paragraph (e.g., articleNum='22', paragraphNum='1' for Article 22, Paragraph 1). The response is in JSON format with structured data.",
     inputSchema: {
       type: "object",
       properties: {
         lawId: {
           type: "string",
-          description: "The Law ID obtained from search_laws (e.g., '363AC0000000108')",
+          description: "The Law ID obtained from search_laws (e.g., '363AC0000000108' for 消費税法, '322AC0000000034' for 財政法)",
+        },
+        articleNum: {
+          type: "string",
+          description: "Optional: Specific article number to retrieve (e.g., '22' for Article 22, '5' for Article 5). If not specified, returns summary of first 20 articles.",
+        },
+        paragraphNum: {
+          type: "string",
+          description: "Optional: Specific paragraph number within the article (e.g., '1' for Paragraph 1, '4' for Paragraph 4). Must be used with articleNum.",
         },
       },
       required: ["lawId"],
@@ -195,7 +226,7 @@ const TOOLS: Tool[] = [
 const server = new Server(
   {
     name: MCP_NAME,
-    version: "1.0.0",
+    version: "1.0.2",
   },
   {
     capabilities: {
@@ -242,13 +273,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "get_law_data": {
-        const args = request.params.arguments as { lawId: string };
+        const args = request.params.arguments as { 
+          lawId: string;
+          articleNum?: string;
+          paragraphNum?: string;
+        };
         
         if (!args.lawId) {
           throw new Error("lawId is required");
         }
         
-        const lawData = await getLawData(args.lawId);
+        const lawData = await getLawData(args.lawId, args.articleNum, args.paragraphNum);
         
         return {
           content: [
@@ -293,4 +328,3 @@ main().catch((error) => {
   console.error(`[${MCP_NAME}] Fatal error:`, error);
   process.exit(1);
 });
-
