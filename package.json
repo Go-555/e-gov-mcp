@@ -1,6 +1,6 @@
 {
   "name": "@gonuts555/e-gov-mcp",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "MCP server for accessing Japanese e-Gov law database API",
   "type": "module",
   "main": "./build/index.js",
