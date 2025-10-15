@@ -8,7 +8,15 @@ import {
   Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 import dotenv from "dotenv";
-import { resolveLawIdFromMap } from "./tax-law-id-map.js";
+import { resolveLawIdFromMap, BASIC_TAX_LAWS } from "./tax-law-id-map.js";
+import {
+  getLookupCache,
+  setLookupCache,
+  getContentCacheWithFetch,
+  getArticleCache,
+  setArticleCache,
+  getCacheStats,
+} from "./lib/cache.js";
 
 dotenv.config();
 
@@ -22,27 +30,51 @@ async function searchLaws(params: {
   lawType?: string;
   limit?: number;
 }): Promise<any> {
-  // 🆕 マップチェック: keyword指定時、lawNumやlawTypeがない場合のみ
+  // keyword指定時のみ、キャッシュとマップをチェック
   if (params.keyword && !params.lawNum && !params.lawType) {
-    const lawId = resolveLawIdFromMap(params.keyword);
-    if (lawId) {
-      console.error(`[map] hit: ${params.keyword} -> ${lawId}`);
-      // マップから結果を構築（API呼び出しをスキップ）
+    const normalizedKeyword = params.keyword.replace(/第[0-9０-９一二三四五六七八九十百千]+条.*$/, "").trim();
+    
+    // Step 1: 静的マップをチェック（超高速）
+    const lawIdFromMap = resolveLawIdFromMap(params.keyword);
+    if (lawIdFromMap) {
+      console.error(`[map] hit: ${params.keyword} -> ${lawIdFromMap}`);
+      // Lookup層キャッシュにも保存（次回のために）
+      setLookupCache(normalizedKeyword, lawIdFromMap);
       return {
         total_count: 1,
         count: 1,
         laws: [
           {
             law_info: {
-              law_id: lawId,
+              law_id: lawIdFromMap,
             },
             revision_info: {
-              law_title: params.keyword.replace(/第[0-9０-９一二三四五六七八九十百千]+条.*$/, "").trim(),
+              law_title: normalizedKeyword,
             },
           },
         ],
       };
     }
+    
+    // Step 2: Lookup層キャッシュをチェック（高速）
+    const lawIdFromCache = getLookupCache(normalizedKeyword);
+    if (lawIdFromCache) {
+      return {
+        total_count: 1,
+        count: 1,
+        laws: [
+          {
+            law_info: {
+              law_id: lawIdFromCache,
+            },
+            revision_info: {
+              law_title: normalizedKeyword,
+            },
+          },
+        ],
+      };
+    }
+    
     console.error(`[map] miss: ${params.keyword} (fallback to API)`);
   }
 
@@ -73,31 +105,62 @@ async function searchLaws(params: {
   }
   
   const jsonData = await response.json() as any;
+  
+  // Lookup層キャッシュに保存（keyword指定時のみ）
+  if (params.keyword && jsonData.laws && jsonData.laws.length > 0) {
+    const firstLaw = jsonData.laws[0];
+    const lawTitle = firstLaw.revision_info?.law_title || params.keyword;
+    const lawId = firstLaw.law_info?.law_id;
+    if (lawId) {
+      setLookupCache(lawTitle, lawId);
+    }
+  }
+  
   return jsonData;
 }
 
 async function getLawData(lawId: string, articleNum?: string, paragraphNum?: string, itemNum?: string): Promise<any> {
-  const url = `${E_GOV_API_BASE}/law_data/${lawId}`;
-  
-  console.error(`[${MCP_NAME}] Fetching law data: ${url}`);
-  
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`e-Gov API error: ${response.status} ${response.statusText}`);
+  // Article層キャッシュチェック（特定の条が指定されている場合）
+  if (articleNum) {
+    const cachedArticle = getArticleCache(lawId, articleNum, paragraphNum, itemNum);
+    if (cachedArticle) {
+      return cachedArticle;
+    }
   }
   
-  const jsonData = await response.json() as any;
+  // Content層キャッシュから全文を取得（なければAPIから取得）
+  const lawData = await getContentCacheWithFetch(lawId, async () => {
+    // asofパラメータを追加（実行日の日付）
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const params = new URLSearchParams({
+      law_full_text_format: 'json',
+      asof: today,
+    });
+    const url = `${E_GOV_API_BASE}/law_data/${lawId}?${params.toString()}`;
+    
+    console.error(`[${MCP_NAME}] Fetching law data: ${url}`);
+    
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`e-Gov API error: ${response.status} ${response.statusText}`);
+    }
+    
+    return await response.json();
+  });
   
   // If specific article is requested, extract it
   if (articleNum) {
-    return extractArticle(jsonData, articleNum, paragraphNum, itemNum);
+    const result = extractArticle(lawData, articleNum, paragraphNum, itemNum);
+    // Article層キャッシュに保存
+    setArticleCache(lawId, articleNum, paragraphNum, itemNum, result);
+    return result;
   }
   
   // Otherwise return basic info + article summary
   return {
-    lawInfo: jsonData.law_info,
-    revisionInfo: jsonData.revision_info,
-    articlesSummary: extractArticlesSummary(jsonData.law_full_text),
+    lawInfo: lawData.law_info,
+    revisionInfo: lawData.revision_info,
+    articlesSummary: extractArticlesSummary(lawData.law_full_text),
     note: "This is a summary. Use articleNum parameter to get specific articles."
   };
 }
@@ -243,6 +306,82 @@ function extractTextFromNode(node: any): string {
   return "";
 }
 
+// ============================================================================
+// Prefetch common laws
+// ============================================================================
+
+/**
+ * プリフェッチするデフォルトの法令リスト
+ */
+const DEFAULT_PREFETCH_LAWS = [
+  "法人税法",
+  "所得税法",
+  "消費税法",
+  "相続税法",
+];
+
+/**
+ * 指定された法令を事前にキャッシュに読み込む
+ * 
+ * @param lawNames - プリフェッチする法令名のリスト（省略時はデフォルト）
+ * @returns プリフェッチ結果
+ */
+async function prefetchCommonLaws(lawNames?: string[]): Promise<any> {
+  const targetLaws = lawNames || DEFAULT_PREFETCH_LAWS;
+  const results: any[] = [];
+  const errors: any[] = [];
+  
+  console.error(`[${MCP_NAME}] Prefetching ${targetLaws.length} laws...`);
+  
+  for (const lawName of targetLaws) {
+    try {
+      // Step 1: 法令名 → ID を解決
+      let lawId: string | undefined;
+      
+      // 静的マップをチェック
+      lawId = resolveLawIdFromMap(lawName) ?? undefined;
+      
+      // マップになければ検索APIで取得
+      if (!lawId) {
+        const searchResult = await searchLaws({ keyword: lawName, limit: 1 });
+        if (searchResult.laws && searchResult.laws.length > 0) {
+          lawId = searchResult.laws[0].law_info?.law_id;
+        }
+      }
+      
+      if (!lawId) {
+        errors.push({ lawName, error: "Law ID not found" });
+        continue;
+      }
+      
+      // Step 2: 法令全文を取得してContent層にキャッシュ
+      await getLawData(lawId);
+      
+      results.push({
+        lawName,
+        lawId,
+        status: "cached",
+      });
+      
+      console.error(`[${MCP_NAME}] Prefetched: ${lawName} (${lawId})`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      errors.push({ lawName, error: errorMessage });
+      console.error(`[${MCP_NAME}] Prefetch error for ${lawName}: ${errorMessage}`);
+    }
+  }
+  
+  return {
+    prefetched: results,
+    errors: errors.length > 0 ? errors : undefined,
+    summary: {
+      total: targetLaws.length,
+      success: results.length,
+      failed: errors.length,
+    },
+  };
+}
+
 // Define tools
 const TOOLS: Tool[] = [
   {
@@ -297,13 +436,35 @@ const TOOLS: Tool[] = [
       required: ["lawId"],
     },
   },
+  {
+    name: "prefetch_common_laws",
+    description: "Prefetch commonly used tax laws into cache for faster access. This tool loads law data into cache before it's needed, improving response time for subsequent queries. By default, it prefetches 法人税法, 所得税法, 消費税法, and 相続税法.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        lawNames: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional: List of law names to prefetch. If not specified, defaults to [法人税法, 所得税法, 消費税法, 相続税法]",
+        },
+      },
+    },
+  },
+  {
+    name: "get_cache_stats",
+    description: "Get cache statistics including hit rates, miss rates, and current cache sizes for all cache layers (Lookup, Content, Article). Useful for monitoring cache performance and understanding which laws are being cached.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
 ];
 
 // Create server
 const server = new Server(
   {
     name: MCP_NAME,
-    version: "1.1.0",
+    version: "1.2.0",
   },
   {
     capabilities: {
@@ -368,6 +529,36 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             {
               type: "text",
               text: JSON.stringify(lawData, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "prefetch_common_laws": {
+        const args = request.params.arguments as {
+          lawNames?: string[];
+        };
+        
+        const result = await prefetchCommonLaws(args.lawNames);
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "get_cache_stats": {
+        const stats = getCacheStats();
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(stats, null, 2),
             },
           ],
         };

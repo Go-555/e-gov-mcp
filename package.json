@@ -1,11 +1,11 @@
 {
   "name": "@gonuts555/e-gov-mcp",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "MCP server for accessing Japanese e-Gov law database API",
   "type": "module",
   "main": "./build/index.js",
   "bin": {
-    "e-gov-mcp": "./build/index.js"
+    "e-gov-mcp": "build/index.js"
   },
   "files": [
     "build"
@@ -37,7 +37,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.4",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "lru-cache": "^11.2.2"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
