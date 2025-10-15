@@ -182,6 +182,8 @@ Law IDを使用して法令の詳細を取得します。
   - 指定しない場合、最初の20条の概要を返します
 - `paragraphNum` (string, オプション): 取得する項の番号（articleNumと併用）
   - 例: `"4"` (第4項)
+- `itemNum` (string, オプション): 取得する号の番号（articleNumとparagraphNumと併用）
+  - 例: `"1"` (第1号)
 
 **出力:**
 
@@ -206,6 +208,44 @@ Law IDを使用して法令の詳細を取得します。
     ]
   },
   "note": "Showing Article 22, Paragraph 4"
+}
+```
+
+特定の項・号を指定した場合:
+```json
+{
+  "lawInfo": {...},
+  "revisionInfo": {...},
+  "article": {
+    "tag": "Article",
+    "attr": { "Num": "22" },
+    "children": [
+      {
+        "tag": "ArticleTitle",
+        "children": ["第二十二条"]
+      },
+      {
+        "tag": "Paragraph",
+        "attr": { "Num": "3" },
+        "children": [
+          {
+            "tag": "ParagraphNum",
+            "children": ["３"]
+          },
+          {
+            "tag": "ParagraphSentence",
+            "children": [...]
+          },
+          {
+            "tag": "Item",
+            "attr": { "Num": "1" },
+            "children": [...]
+          }
+        ]
+      }
+    ]
+  },
+  "note": "Showing Article 22, Paragraph 3, Item 1"
 }
 ```
 
@@ -239,7 +279,24 @@ Law IDを使用して法令の詳細を取得します。
 **取得される内容:**
 > 第二項に規定する当該事業年度の収益の額及び前項各号に掲げる額は、別段の定めがあるものを除き、一般に公正妥当と認められる会計処理の基準に従つて計算されるものとする。
 
-### 例3: 消費税法の納税義務（第5条）を取得
+### 例3: 法人税法第22条第3項第1号を取得
+
+```json
+{
+  "name": "get_law_data",
+  "arguments": {
+    "lawId": "340AC0000000034",
+    "articleNum": "22",
+    "paragraphNum": "3",
+    "itemNum": "1"
+  }
+}
+```
+
+**取得される内容:**
+> 当該事業年度の収益に係る売上原価、完成工事原価その他これらに準ずる原価の額
+
+### 例4: 消費税法の納税義務（第5条）を取得
 
 ```json
 {
@@ -251,7 +308,7 @@ Law IDを使用して法令の詳細を取得します。
 }
 ```
 
-### 例4: 所得税法を検索
+### 例5: 所得税法を検索
 
 ```json
 {
@@ -337,6 +394,6 @@ MIT
 ---
 
 **パッケージ:** `@gonuts555/e-gov-mcp`  
-**バージョン:** 1.0.4  
+**バージョン:** 1.1.0  
 **npm:** https://www.npmjs.com/package/@gonuts555/e-gov-mcp  
 **GitHub:** https://github.com/Go-555/e-gov-mcp

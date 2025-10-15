@@ -76,7 +76,7 @@ async function searchLaws(params: {
   return jsonData;
 }
 
-async function getLawData(lawId: string, articleNum?: string, paragraphNum?: string): Promise<any> {
+async function getLawData(lawId: string, articleNum?: string, paragraphNum?: string, itemNum?: string): Promise<any> {
   const url = `${E_GOV_API_BASE}/law_data/${lawId}`;
   
   console.error(`[${MCP_NAME}] Fetching law data: ${url}`);
@@ -90,7 +90,7 @@ async function getLawData(lawId: string, articleNum?: string, paragraphNum?: str
   
   // If specific article is requested, extract it
   if (articleNum) {
-    return extractArticle(jsonData, articleNum, paragraphNum);
+    return extractArticle(jsonData, articleNum, paragraphNum, itemNum);
   }
   
   // Otherwise return basic info + article summary
@@ -103,7 +103,7 @@ async function getLawData(lawId: string, articleNum?: string, paragraphNum?: str
 }
 
 // Extract specific article from law data
-function extractArticle(lawData: any, articleNum: string, paragraphNum?: string): any {
+function extractArticle(lawData: any, articleNum: string, paragraphNum?: string, itemNum?: string): any {
   const lawFullText = lawData.law_full_text;
   
   // Find the article in the law structure
@@ -120,22 +120,69 @@ function extractArticle(lawData: any, articleNum: string, paragraphNum?: string)
   // If paragraph number is specified, filter paragraphs
   let filteredArticle = article;
   if (paragraphNum) {
+    const targetParagraph = article.children?.find((child: any) => 
+      child.tag === "Paragraph" && child.attr?.Num === paragraphNum
+    );
+    
+    if (!targetParagraph) {
+      return {
+        lawInfo: lawData.law_info,
+        revisionInfo: lawData.revision_info,
+        error: `Article ${articleNum}, Paragraph ${paragraphNum} not found`,
+      };
+    }
+    
+    // If item number is specified, filter items within the paragraph
+    let filteredParagraph = targetParagraph;
+    if (itemNum) {
+      const targetItem = targetParagraph.children?.find((child: any) => 
+        child.tag === "Item" && child.attr?.Num === itemNum
+      );
+      
+      if (!targetItem) {
+        return {
+          lawInfo: lawData.law_info,
+          revisionInfo: lawData.revision_info,
+          error: `Article ${articleNum}, Paragraph ${paragraphNum}, Item ${itemNum} not found`,
+        };
+      }
+      
+      // Keep ParagraphNum, ParagraphSentence (context), and the specific Item
+      filteredParagraph = {
+        ...targetParagraph,
+        children: targetParagraph.children?.filter((child: any) => {
+          return child.tag === "ParagraphNum" || 
+                 child.tag === "ParagraphSentence" ||
+                 (child.tag === "Item" && child.attr?.Num === itemNum);
+        }) || []
+      };
+    }
+    
     filteredArticle = {
       ...article,
-      children: article.children?.filter((child: any) => {
-        return child.tag === "Paragraph" && child.attr?.Num === paragraphNum ||
-               child.tag === "ArticleTitle" || child.tag === "ArticleCaption";
-      }) || []
+      children: [
+        ...article.children?.filter((child: any) => 
+          child.tag === "ArticleTitle" || child.tag === "ArticleCaption"
+        ) || [],
+        filteredParagraph
+      ]
     };
+  }
+  
+  // Build note message
+  let note = `Showing Article ${articleNum}`;
+  if (paragraphNum) {
+    note += `, Paragraph ${paragraphNum}`;
+  }
+  if (itemNum) {
+    note += `, Item ${itemNum}`;
   }
   
   return {
     lawInfo: lawData.law_info,
     revisionInfo: lawData.revision_info,
     article: filteredArticle,
-    note: paragraphNum 
-      ? `Showing Article ${articleNum}, Paragraph ${paragraphNum}` 
-      : `Showing Article ${articleNum}`
+    note: note
   };
 }
 
@@ -226,7 +273,7 @@ const TOOLS: Tool[] = [
   },
   {
     name: "get_law_data",
-    description: "Get Japanese law content by Law ID. Can retrieve the entire law (summary of first 20 articles) or a specific article/paragraph. Use articleNum to get a specific article (e.g., '22' for Article 22). Use paragraphNum with articleNum to get a specific paragraph (e.g., articleNum='22', paragraphNum='1' for Article 22, Paragraph 1). The response is in JSON format with structured data.",
+    description: "Get Japanese law content by Law ID. Can retrieve the entire law (summary of first 20 articles) or a specific article/paragraph/item. Use articleNum to get a specific article (e.g., '22' for Article 22). Use paragraphNum with articleNum to get a specific paragraph (e.g., articleNum='22', paragraphNum='1' for Article 22, Paragraph 1). Use itemNum with both articleNum and paragraphNum to get a specific item (e.g., articleNum='22', paragraphNum='3', itemNum='1' for Article 22, Paragraph 3, Item 1). The response is in JSON format with structured data.",
     inputSchema: {
       type: "object",
       properties: {
@@ -242,6 +289,10 @@ const TOOLS: Tool[] = [
           type: "string",
           description: "Optional: Specific paragraph number within the article (e.g., '1' for Paragraph 1, '4' for Paragraph 4). Must be used with articleNum.",
         },
+        itemNum: {
+          type: "string",
+          description: "Optional: Specific item number within the paragraph (e.g., '1' for Item 1, '2' for Item 2). Must be used with both articleNum and paragraphNum.",
+        },
       },
       required: ["lawId"],
     },
@@ -252,7 +303,7 @@ const TOOLS: Tool[] = [
 const server = new Server(
   {
     name: MCP_NAME,
-    version: "1.0.4",
+    version: "1.1.0",
   },
   {
     capabilities: {
@@ -303,13 +354,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           lawId: string;
           articleNum?: string;
           paragraphNum?: string;
+          itemNum?: string;
         };
         
         if (!args.lawId) {
           throw new Error("lawId is required");
         }
         
-        const lawData = await getLawData(args.lawId, args.articleNum, args.paragraphNum);
+        const lawData = await getLawData(args.lawId, args.articleNum, args.paragraphNum, args.itemNum);
         
         return {
           content: [
