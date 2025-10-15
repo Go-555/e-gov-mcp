@@ -8,6 +8,7 @@ import {
   Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 import dotenv from "dotenv";
+import { resolveLawIdFromMap } from "./tax-law-id-map.js";
 
 dotenv.config();
 
@@ -21,6 +22,31 @@ async function searchLaws(params: {
   lawType?: string;
   limit?: number;
 }): Promise<any> {
+  // 🆕 マップチェック: keyword指定時、lawNumやlawTypeがない場合のみ
+  if (params.keyword && !params.lawNum && !params.lawType) {
+    const lawId = resolveLawIdFromMap(params.keyword);
+    if (lawId) {
+      console.error(`[map] hit: ${params.keyword} -> ${lawId}`);
+      // マップから結果を構築（API呼び出しをスキップ）
+      return {
+        total_count: 1,
+        count: 1,
+        laws: [
+          {
+            law_info: {
+              law_id: lawId,
+            },
+            revision_info: {
+              law_title: params.keyword.replace(/第[0-9０-９一二三四五六七八九十百千]+条.*$/, "").trim(),
+            },
+          },
+        ],
+      };
+    }
+    console.error(`[map] miss: ${params.keyword} (fallback to API)`);
+  }
+
+  // 従来通りAPIを叩く
   const searchParams = new URLSearchParams();
   
   // law_title parameter accepts partial match (部分一致)
@@ -226,7 +252,7 @@ const TOOLS: Tool[] = [
 const server = new Server(
   {
     name: MCP_NAME,
-    version: "1.0.2",
+    version: "1.0.4",
   },
   {
     capabilities: {
